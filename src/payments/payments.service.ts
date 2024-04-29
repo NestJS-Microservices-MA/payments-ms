@@ -1,13 +1,17 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { ClientProxy } from '@nestjs/microservices';
 import { Request, Response } from 'express';
 import Stripe from 'stripe';
 
-import { envs } from 'src/config';
+import { NATS_SERVICE, envs } from 'src/config';
 import { PaymentSessionDto } from './dto/payment-session.dto';
 
 @Injectable()
 export class PaymentsService {
     private readonly stripe = new Stripe(envs.stripeSecret)
+    private readonly logger = new Logger('PaymentsMS - Service')
+
+    constructor(@Inject(NATS_SERVICE) private readonly client: ClientProxy) {}
 
     async createPaymentSession(paymentSessionDto: PaymentSessionDto) {
         const { currency, items, orderId } = paymentSessionDto;
@@ -36,7 +40,11 @@ export class PaymentsService {
             cancel_url: envs.stripeCancelUrl,
         });
 
-        return session;
+        return {
+            cancelUrl: session.cancel_url,
+            successUrl: session.success_url,
+            sessionUrl: session.url,
+        };
     }
 
     async stripeWebhook( req: Request, res: Response) {
@@ -54,8 +62,13 @@ export class PaymentsService {
         switch (event.type) {
             case 'charge.succeeded':
                 const charge = event.data.object;
-                // TODO - call MS
-                console.log({ metadata: charge.metadata });
+                const payload = {
+                    stripePaymentId: charge.id,
+                    orderId: charge.metadata.orderId,
+                    receiptUrl: charge.receipt_url,
+                }
+                
+                this.client.emit('payment.succeeded', payload);
                 break;
             default:
                 console.log(`Uncontrolled event`);
