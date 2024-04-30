@@ -1,7 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ClientsModule, NatsOptions, Transport } from '@nestjs/microservices';
 
-import { NATS_SERVICE, envs } from 'src/config';
+import { envs } from 'src/config';
+import { NATS_SERVICE } from 'src/config/services';
 
 interface NatsConfig extends NatsOptions {
     name: string;
